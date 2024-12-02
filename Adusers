@@ -1,0 +1,80 @@
+# Gebruikerslijst met specifieke OUs
+$users = @(
+    @{
+        SamAccountName = "jdoe"
+        GivenName = "John"
+        Surname = "Doe"
+        DisplayName = "John Doe"
+        Email = "jdoe@example.com"
+        Password = "P@ssw0rd!"
+        OU = "OU=Finance,OU=Departments,DC=example,DC=com"
+    },
+    @{
+        SamAccountName = "asmith"
+        GivenName = "Alice"
+        Surname = "Smith"
+        DisplayName = "Alice Smith"
+        Email = "asmith@example.com"
+        Password = "P@ssw0rd!"
+        OU = "OU=IT,OU=Departments,DC=example,DC=com"
+    },
+    @{
+        SamAccountName = "bwilliams"
+        GivenName = "Bob"
+        Surname = "Williams"
+        DisplayName = "Bob Williams"
+        Email = "bwilliams@example.com"
+        Password = "P@ssw0rd!"
+        OU = "OU=HR,OU=Departments,DC=example,DC=com"
+    },
+    @{
+        SamAccountName = "cjones"
+        GivenName = "Catherine"
+        Surname = "Jones"
+        DisplayName = "Catherine Jones"
+        Email = "cjones@example.com"
+        Password = "P@ssw0rd!"
+        OU = "OU=Marketing,OU=Departments,DC=example,DC=com"
+    },
+    @{
+        SamAccountName = "dking"
+        GivenName = "David"
+        Surname = "King"
+        DisplayName = "David King"
+        Email = "dking@example.com"
+        Password = "P@ssw0rd!"
+        OU = "OU=Sales,OU=Departments,DC=example,DC=com"
+    }
+)
+
+# Controleer of de Active Directory-module is geïnstalleerd
+if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+    Write-Error "Active Directory module is not installed. Please install it before running this script."
+    exit
+}
+
+# Laad de Active Directory-module
+Import-Module ActiveDirectory
+
+# Maak gebruikers aan
+foreach ($user in $users) {
+    try {
+        # Controleer of de gebruiker al bestaat
+        if (Get-ADUser -Filter {SamAccountName -eq $user.SamAccountName} -ErrorAction SilentlyContinue) {
+            Write-Host "User $($user.SamAccountName) already exists. Skipping..."
+        } else {
+            # Maak de gebruiker aan
+            New-ADUser -SamAccountName $user.SamAccountName `
+                       -GivenName $user.GivenName `
+                       -Surname $user.Surname `
+                       -DisplayName $user.DisplayName `
+                       -EmailAddress $user.Email `
+                       -AccountPassword (ConvertTo-SecureString $user.Password -AsPlainText -Force) `
+                       -Enabled $true `
+                       -Path $user.OU
+            Write-Host "User $($user.SamAccountName) created successfully in $($user.OU)."
+        }
+    } catch {
+        Write-Error "Failed to create user $($user.SamAccountName): $_"
+    }
+}
