@@ -1,0 +1,40 @@
+# Configuratie: pad naar de basislocatie van homefolders
+$basePath = "\\fileserver\home"
+
+# Controleer of de Active Directory-module is geïnstalleerd
+if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+    Write-Error "Active Directory module is not installed. Please install it before running this script."
+    exit
+}
+
+# Laad de Active Directory-module
+Import-Module ActiveDirectory
+
+# Haal alle gebruikers op uit AD
+$users = Get-ADUser -Filter * -Properties SamAccountName, HomeDirectory
+
+foreach ($user in $users) {
+    # Controleer of de gebruiker al een HomeDirectory heeft ingesteld
+    if ($user.HomeDirectory -and (Test-Path $user.HomeDirectory)) {
+        Write-Host "User $($user.SamAccountName) already has a valid home folder: $($user.HomeDirectory)"
+    } else {
+        # Stel het pad voor de homefolder in
+        $homeFolder = Join-Path -Path $basePath -ChildPath $user.SamAccountName
+
+        # Controleer of de map al bestaat, zo niet, maak deze aan
+        if (-not (Test-Path $homeFolder)) {
+            New-Item -ItemType Directory -Path $homeFolder
+            Write-Host "Created home folder for $($user.SamAccountName): $homeFolder"
+        } else {
+            Write-Host "Home folder already exists for $($user.SamAccountName): $homeFolder"
+        }
+
+        # Update de HomeDirectory in AD
+        try {
+            Set-ADUser -Identity $user.SamAccountName -HomeDirectory $homeFolder -HomeDrive "H:"
+            Write-Host "Updated Active Directory for $($user.SamAccountName) with home folder: $homeFolder"
+        } catch {
+            Write-Error "Failed to update Active Directory for $($user.SamAccountName): $_"
+        }
+    }
+}
