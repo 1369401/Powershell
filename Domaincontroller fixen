@@ -1,0 +1,183 @@
+Dank je voor de verduidelijking! Je netwerkconfiguratie is duidelijk en lijkt prima opgezet, maar er zijn enkele aandachtspunten bij het gebruik van een setup met twee netwerkkaarten op een domain controller (DC). Hieronder geef ik advies hoe je deze situatie optimaal kunt configureren en mogelijke problemen met replicatie en DNS kunt oplossen.
+
+1. Controleer en optimaliseer de netwerkkaartenconfiguratie
+
+Netwerkkaart 1 (via router)
+
+	•	Functie: Internettoegang.
+	•	Instellingen:
+	•	IP-adres: Dynamisch (via DHCP) of statisch, afhankelijk van je voorkeur.
+	•	DNS: Niet instellen als DNS-server voor de domeincontroller. Deze kaart mag geen invloed hebben op DNS in het domein. Laat deze kaart bij voorkeur leeg of stel 127.0.0.1 (localhost) in als DNS-server.
+
+Netwerkkaart 2 (10.10.0.10 - interne kaart)
+
+	•	Functie: LAN-communicatie binnen je domein, inclusief DHCP en DNS.
+	•	Instellingen:
+	•	IP-adres: Statisch (zoals je hebt ingesteld).
+	•	DNS: Gebruik de interne DNS-instellingen van de DC. Dus:
+	•	Primary DNS: 127.0.0.1 (of het IP-adres van deze DC zelf, zoals 10.10.0.10).
+	•	Secondary DNS: Eventueel het IP-adres van een andere DC (zoals 10.10.0.11, de core-server).
+
+Belangrijke opmerking
+
+Zorg ervoor dat de twee netwerkkaarten elkaar niet overlappen. Als beide kaarten verkeer voor hetzelfde netwerk (bijvoorbeeld 10.10.x.x) proberen af te handelen, kan dat leiden tot onvoorspelbare problemen.
+	•	Je kunt routevoorkeuren instellen via het metrieksysteem:
+	1.	Ga naar de Eigenschappen van de netwerkkaart.
+	2.	Open Internet Protocol Version 4 (TCP/IPv4) > Geavanceerd.
+	3.	Stel een lagere waarde in bij de metriekinstellingen voor de interne kaart (bijvoorbeeld 1), zodat verkeer over de interne kaart wordt geleid.
+
+2. Core-server configuratie (10.10.0.11)
+
+Voor de core-server zijn de instellingen afhankelijk van de DNS- en DHCP-functies die door de grafische DC (10.10.0.10) worden aangeboden. De instellingen zouden als volgt moeten zijn:
+	•	IP-adres: Statisch (zoals 10.10.0.11).
+	•	DNS-instellingen:
+	•	Primary DNS: 10.10.0.10 (de grafische DC).
+	•	Secondary DNS: 10.10.0.11 (zichzelf, voor failover).
+
+Met deze configuratie zal de core-server altijd de grafische DC als DNS-prioriteit gebruiken.
+
+3. DHCP-instellingen controleren
+
+Als de grafische DC DHCP aanbiedt via de interne netwerkkaart:
+	•	Controleer of het DHCP-bereik (bijvoorbeeld 10.10.0.100-10.10.0.200) exclusief IP’s vrijlaat voor vaste apparaten, zoals 10.10.0.10 en 10.10.0.11.
+	•	Stel de DHCP-opties correct in, zodat clients binnen het netwerk altijd de juiste DNS-servers krijgen:
+	•	Optie 003 (Gateway): Het gateway-adres (indien nodig).
+	•	Optie 006 (DNS Servers): 10.10.0.10 en 10.10.0.11.
+
+4. DNS-replicatie en AD-synchronisatie
+
+Met jouw configuratie moet DNS- en AD-replicatie zonder problemen werken. Controleer en test de volgende punten:
+
+DNS-configuratie controleren
+
+Controleer of beide DC’s DNS-zones correct delen:
+	1.	Open DNS Manager op de grafische DC.
+	2.	Controleer of de Forward Lookup Zone (bijvoorbeeld domeinnaam.local) is ingesteld als Active Directory-geïntegreerd.
+	3.	Controleer op de core-server of dezelfde zone zichtbaar is en wordt gedeeld.
+
+Replicatie testen
+
+Voer de volgende commando’s uit om de replicatie te testen:
+	1.	Controleer de replicatiestatus:
+
+repadmin /replsummary
+
+
+	2.	Forceer replicatie:
+
+repadmin /syncall /AeD
+
+
+	3.	Controleer de replicatielogs (op fouten):
+
+dcdiag /test:replications
+
+
+
+Maak een testobject aan
+
+	•	Maak een test-securitygroep aan op de grafische DC en controleer of deze verschijnt op de core-server. Test ook andersom.
+
+5. Problemen met dubbel netwerk voorkomen
+
+Dubbele netwerkkaarten op een DC kunnen problemen veroorzaken als DNS niet goed is ingesteld. Typische symptomen zijn:
+	•	Replicatieproblemen.
+	•	Verkeerde DNS-resolutie.
+	•	Onverwachte netwerkvertragingen.
+
+Oplossing:
+	•	Bind DNS aan de interne netwerkkaart:
+	•	Open DNS Manager.
+	•	Klik met de rechtermuisknop op de servernaam > Eigenschappen.
+	•	Onder het tabblad Interfaces, selecteer Only the following IP addresses en kies 10.10.0.10.
+
+Conclusie
+
+Je setup lijkt correct, maar enkele aandachtspunten zijn belangrijk:
+	1.	Stel DNS correct in op beide servers (focus op interne netwerkkaart).
+	2.	Zorg ervoor dat beide netwerkkaarten elkaar niet overlappen.
+	3.	Test de replicatie tussen de DC’s na het aanpassen van de instellingen.
+
+Als je verdere hulp nodig hebt, laat me weten welke foutmeldingen je tegenkomt!
+
+-2e reactie-
+
+
+Ja, dat klopt waarschijnlijk: als je op je Windows-client 10.10.0.10 als preferred DNS hebt gebruikt om met het domein te verbinden, betekent dit dat de netwerkkaart van je domeincontroller die is ingesteld met het IP-adres 10.10.0.10 (je DHCP-kaart) ook als DNS-server fungeert. Dit gebeurt omdat DNS een cruciale rol speelt in Active Directory, en het verkeer gaat naar de netwerkkaart die de DNS-service op dat moment aanbiedt.
+
+Laten we dit stap voor stap analyseren en verduidelijken:
+
+1. Hoe DNS wordt gebruikt bij domeinverbinding
+
+Wanneer een Windows-client lid wordt van een domein, gebeurt het volgende:
+	•	De client gebruikt de opgegeven DNS-server om het domein te lokaliseren (bijvoorbeeld via een SRV-record voor _ldap._tcp).
+	•	De DNS-server (in dit geval 10.10.0.10) beantwoordt die query’s, zodat de client weet hoe hij de domeincontroller moet bereiken.
+
+Omdat je 10.10.0.10 hebt ingesteld, gebruikt de client de netwerkkaart van de domain controller die dit IP-adres beheert (je DHCP-kaart).
+
+2. Waarom dit gebeurt
+
+Je grafische domaincontroller heeft twee netwerkkaarten, en je hebt waarschijnlijk de DNS-service niet beperkt tot één specifieke netwerkkaart. Hierdoor luistert de DNS-server standaard op alle netwerkkaarten. Dit betekent dat zowel de kaart die is verbonden met je interne LAN (10.10.0.10) als de kaart die via de router communiceert DNS-verzoeken kan afhandelen.
+
+In jouw setup is 10.10.0.10 de kaart die wordt gebruikt voor DHCP en interne communicatie, en dus wordt die ook gebruikt als DNS.
+
+3. Moet je DNS beperken tot één kaart?
+
+Ja, dat is over het algemeen aan te raden in jouw situatie om verwarring en mogelijke netwerkproblemen te voorkomen. Je wilt dat alleen de interne kaart (10.10.0.10) DNS-verkeer afhandelt.
+
+DNS configureren om alleen te luisteren op de interne kaart (10.10.0.10):
+
+	1.	Open DNS Manager op de grafische domaincontroller.
+	2.	Klik met de rechtermuisknop op de naam van de server (bovenaan in de boomstructuur) en kies Properties.
+	3.	Ga naar het tabblad Interfaces.
+	4.	Selecteer Only the following IP addresses.
+	5.	Controleer of alleen het IP-adres van de interne netwerkkaart (10.10.0.10) is geselecteerd.
+	6.	Klik op OK en start de DNS-service opnieuw om de wijzigingen door te voeren:
+
+Restart-Service DNS
+
+4. Hoe DHCP en DNS samenwerken
+
+Als je DHCP-service is ingesteld op de kaart met 10.10.0.10, dan kan deze ook automatisch DNS-serveradressen aanbieden aan clients. Controleer of je DHCP correct is geconfigureerd:
+	1.	Open DHCP Manager (op de grafische DC).
+	2.	Ga naar je scope-instellingen (bijvoorbeeld 10.10.0.0/24).
+	3.	Controleer onder Scope Options of:
+	•	Optie 006 (DNS-servers) het juiste DNS-serveradres bevat (bijvoorbeeld 10.10.0.10 en eventueel 10.10.0.11).
+	•	Optie 003 (Router) de juiste gateway bevat.
+
+Dit zorgt ervoor dat nieuwe clients in het netwerk automatisch het juiste DNS-adres krijgen toegewezen.
+
+5. Verkeer via de router-kaart beperken
+
+Om te voorkomen dat de andere netwerkkaart (die via de router is verbonden) domeinverkeer beïnvloedt:
+	•	Controleer of deze kaart geen rol speelt in het domeinverkeer:
+	1.	Zorg dat de gateway voor de interne netwerkkaart (10.10.0.10) leeg blijft (gebruik geen standaardgateway voor deze kaart).
+	2.	Stel de externe netwerkkaart in met de router als gateway.
+	•	Controleer of de externe kaart niet wordt gebruikt voor domein- of DNS-verkeer. Je kunt dit forceren door een statische route of metriekinstellingen te gebruiken:
+	•	Geef de interne netwerkkaart (10.10.0.10) een lagere metriekwaarde, zodat deze wordt geprefereerd:
+
+route add 0.0.0.0 mask 0.0.0.0 10.10.0.1 metric 1
+
+6. Controleer de clientverbinding
+
+Als je eenmaal de DNS hebt beperkt tot de interne kaart, controleer je op de client of alles goed functioneert:
+	1.	Verbind de client opnieuw met het domein.
+	2.	Controleer de DNS-instellingen met:
+
+ipconfig /all
+
+	•	Zorg dat 10.10.0.10 (en eventueel 10.10.0.11) wordt gebruikt als DNS-server.
+
+	3.	Test domeinfunctionaliteit met:
+
+nslookup <domeinnaam>
+
+Dit zou een antwoord van 10.10.0.10 moeten geven.
+
+Conclusie
+
+	•	Ja, je DHCP-kaart (10.10.0.10) functioneert momenteel ook als DNS-server.
+	•	Dit is logisch en functioneel, maar het is aan te raden DNS expliciet te beperken tot de interne kaart om problemen te voorkomen.
+	•	Controleer je DHCP-opties om ervoor te zorgen dat clients altijd het juiste DNS-adres krijgen.
+
+Laat me weten als je meer hulp nodig hebt!
