@@ -1,0 +1,3 @@
+# Exporteer alle gebruikers met hun groepslidmaatschappen naar een CSV-bestand
+Get-ADUser -Filter * -Property MemberOf | Select-Object SamAccountName, Name, @{Name="Groups";Expression={$_.MemberOf -join "; "}} | Export-Csv -Path "ADUserReport.csv" -NoTypeInformation
+Write-Host "User report exported
