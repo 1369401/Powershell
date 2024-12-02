@@ -1,0 +1,18 @@
+# Configuratie: aantal dagen inactiviteit
+$inactivityThreshold = 30
+
+# Bestandslocatie voor de rapportage
+$outputFile = "InactiveUsersReport.csv"
+
+# Zoek naar gebruikers die langer dan de drempel inactief zijn
+$inactiveUsers = Get-ADUser -Filter * -Properties SamAccountName, DisplayName, LastLogonDate, Enabled | Where-Object {
+    $_.Enabled -eq $true -and ($_.LastLogonDate -lt (Get-Date).AddDays(-$inactivityThreshold) -or !$_.LastLogonDate)
+}
+
+# Als er inactieve gebruikers zijn, exporteer de lijst
+if ($inactiveUsers) {
+    $inactiveUsers | Select-Object SamAccountName, DisplayName, @{Name="LastLogonDate";Expression={$_.LastLogonDate}} | Export-Csv -Path $outputFile -NoTypeInformation
+    Write-Host "Inactive users report generated: $outputFile"
+} else {
+    Write-Host "No inactive users found."
+}
