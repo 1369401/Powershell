@@ -1,0 +1,57 @@
+# Security groups lijst met specifieke OUs
+$securityGroups = @(
+    @{
+        Name = "Finance-Team"
+        Description = "Finance department team"
+        OU = "OU=Finance,OU=Departments,DC=example,DC=com"
+    },
+    @{
+        Name = "IT-Admins"
+        Description = "IT department administrators"
+        OU = "OU=IT,OU=Departments,DC=example,DC=com"
+    },
+    @{
+        Name = "HR-Staff"
+        Description = "HR department staff"
+        OU = "OU=HR,OU=Departments,DC=example,DC=com"
+    },
+    @{
+        Name = "Marketing-Team"
+        Description = "Marketing department team"
+        OU = "OU=Marketing,OU=Departments,DC=example,DC=com"
+    },
+    @{
+        Name = "Sales-Executives"
+        Description = "Sales department executives"
+        OU = "OU=Sales,OU=Departments,DC=example,DC=com"
+    }
+)
+
+# Controleer of de Active Directory-module is geïnstalleerd
+if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+    Write-Error "Active Directory module is not installed. Please install it before running this script."
+    exit
+}
+
+# Laad de Active Directory-module
+Import-Module ActiveDirectory
+
+# Maak security groups aan
+foreach ($group in $securityGroups) {
+    try {
+        # Controleer of de groep al bestaat
+        if (Get-ADGroup -Filter {Name -eq $group.Name} -ErrorAction SilentlyContinue) {
+            Write-Host "Group $($group.Name) already exists. Skipping..."
+        } else {
+            # Maak de groep aan
+            New-ADGroup -Name $group.Name `
+                        -GroupScope Global `
+                        -GroupCategory Security `
+                        -Description $group.Description `
+                        -Path $group.OU
+            Write-Host "Group $($group.Name) created successfully in $($group.OU)."
+        }
+    } catch {
+        Write-Error "Failed to create group $($group.Name): $_"
+    }
+}
